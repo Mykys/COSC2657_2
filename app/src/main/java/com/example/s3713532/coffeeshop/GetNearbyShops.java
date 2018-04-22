@@ -19,24 +19,20 @@ public class GetNearbyShops extends AsyncTask<Void, Void, Void> {
     private double lat, lon, radius;
     private String json;
     private int state;
-    private int price;
+    private String filterItem;
 
     private CameraZoomView screen;
+    private FilterShops filter;
 
-    private List<Shop> shopsWithinZoomLevel;
-
-    public GetNearbyShops (GoogleMap mMap, double lat, double lon, double radius, int state, int price) {
+    public GetNearbyShops (GoogleMap mMap, double lat, double lon, double radius, int state, String filterItem) {
         this.mMap = mMap;
         this.lat = lat;
         this.lon = lon;
         this.radius = radius;
         this.state = state;
         this.screen = new CameraZoomView(mMap);
-        this.price = price;
-    }
-
-    public List<Shop> getShopsWithinZoomLevel() {
-        return shopsWithinZoomLevel;
+        this.filter = new FilterShops(mMap, screen);
+        this.filterItem = filterItem;
     }
 
     @Override
@@ -55,17 +51,33 @@ public class GetNearbyShops extends AsyncTask<Void, Void, Void> {
         Gson gson = new Gson();
         Shop[] shops = gson.fromJson(json, Shop[].class);
 
-        List<Shop> nearbyShopList = screen.findNearbyShops(shops, lat, lon, radius);
+        List<Shop> nearbyShopList = filter.findNearbyShops(shops, lat, lon, radius);
+        List<Shop> shopsWithinZoomLevel = screen.findShopsWithinZoomLevel(nearbyShopList);
 
+        // Find nearby shops
         if (state == 1) {
-            shopsWithinZoomLevel = screen.findShopsWithinZoomLevel(nearbyShopList);
-            screen.ShowNearbyShops(shopsWithinZoomLevel);
+            filter.ShowNearbyShops(shopsWithinZoomLevel);
         }
 
+        // Filter by price
         if (state == 2) {
+            int price = Integer.parseInt(filterItem);
+            List<Shop> filteredShops = filter.findShopWithinPriceRange(shopsWithinZoomLevel, price);
+            filter.ShowNearbyShops(filteredShops);
+        }
+
+        // Filter by review
+        if (state == 3) {
+            List<Shop> filteredShops = filter.findShopWithReview(shopsWithinZoomLevel, filterItem);
+            filter.ShowNearbyShops(filteredShops);
+        }
+
+        // Filter by distance
+        if (state == 4) {
+            int radius = Integer.parseInt(filterItem);
+            nearbyShopList = filter.findNearbyShops(shops, lat, lon, radius);
             shopsWithinZoomLevel = screen.findShopsWithinZoomLevel(nearbyShopList);
-            List<Shop> filteredShops = screen.findShopWithinPriceRange(shopsWithinZoomLevel, price);
-            screen.ShowNearbyShops(filteredShops);
+            filter.ShowNearbyShops(shopsWithinZoomLevel);
         }
 
     }

@@ -1,11 +1,12 @@
 package com.example.s3713532.coffeeshop;
 
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
-import android.graphics.Camera;
-import android.os.AsyncTask;
+import android.graphics.Color;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
+import android.text.InputType;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.*;
@@ -15,14 +16,13 @@ import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.Circle;
+import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
-import com.google.android.gms.maps.model.LatLngBounds;
+import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
-import com.google.gson.Gson;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
@@ -32,10 +32,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private double longitude;
 
     private CameraZoomView screen;
-    private MarkerOptions currMarker;
-
-    private String json;
-    private List<Shop> currDisplayedShops;
+    private Marker currMarker;
+    private Circle currCircle;
+    private int radius;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,7 +48,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         // Start position
         latitude = 10.729339;
         longitude = 106.694286;
-        currDisplayedShops = new ArrayList<>();
+        currMarker = null;
+        currCircle = null;
+        radius = 10;
     }
 
     @Override
@@ -58,6 +59,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         // Get the popular user buttons
         mMap.getUiSettings().setZoomControlsEnabled(true);
+
+        mMap.setInfoWindowAdapter(new CustomInfoWindow(MapsActivity.this));
 
         // Starting shop when user open the app
         LatLng RMITVN = new LatLng(latitude, longitude);
@@ -75,9 +78,14 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         mMap.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
             @Override
             public void onMapClick(LatLng latLng) {
+                if (currMarker != null) {
+                   currMarker.remove();
+                }
                 latitude = latLng.latitude;
                 longitude = latLng.longitude;
-                //Display current marker to keep track of current position
+                currMarker = mMap.addMarker(new MarkerOptions()
+                        .position(latLng)
+                        .icon(BitmapDescriptorFactory.fromResource(R.drawable.down_arrow)));
             }
         });
 
@@ -100,7 +108,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             @Override
             public void onClick(View view) {
                 mMap.clear();
-                new GetNearbyShops(mMap, latitude, longitude, 10, 1, 0).execute();
+                new GetNearbyShops(mMap, latitude, longitude, radius, 1, "").execute();
+
+                LatLng currPos = new LatLng(latitude, longitude);
+                currCircle = mMap.addCircle(new CircleOptions()
+                        .center(currPos)
+                        .radius(radius*1000)
+                        .fillColor(0x556b96db).strokeColor(Color.TRANSPARENT));
             }
         });
 
@@ -108,22 +122,23 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         priceBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                // Creating the instance of PopupMenu
-                android.widget.PopupMenu popup = new android.widget.PopupMenu(MapsActivity.this, priceBtn);
-                //Inflating the Popup using xml file
-                popup.getMenuInflater().inflate(R.menu.popup_menu, popup.getMenu());
+                createPopUpMenu(priceBtn, MapsActivity.this, R.menu.popup_menu, 2);
+            }
+        });
 
-                //registering popup with OnMenuItemClickListener
-                popup.setOnMenuItemClickListener(new android.widget.PopupMenu.OnMenuItemClickListener() {
-                    @Override
-                    public boolean onMenuItemClick(MenuItem menuItem) {
-                        int priceRange = Integer.parseInt(menuItem.getTitle().toString());
-                        mMap.clear();
-                        new GetNearbyShops(mMap, latitude, longitude, 10, 2, priceRange).execute();
-                        return true;
-                    }
-                });
-                popup.show();
+        final Button reviewBtn = findViewById(R.id.reviewBtn);
+        reviewBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                createPopUpMenu(reviewBtn, MapsActivity.this, R.menu.review_menu, 3);
+            }
+        });
+
+        final Button distanceBtn = findViewById(R.id.distanceBtn);
+        distanceBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                createPopUpMenu(distanceBtn, MapsActivity.this, R.menu.popup_distance, 4);
             }
         });
 
@@ -143,6 +158,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
                 final EditText priceBox = new EditText(MapsActivity.this);
                 priceBox.setHint("Price");
+                priceBox.setInputType(InputType.TYPE_CLASS_NUMBER);
                 layout.addView(priceBox);
 
                 final EditText impressionBox = new EditText(MapsActivity.this);
@@ -182,8 +198,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                     postData.put("lat", String.format("%.6f", latitude));
                                     postData.put("lon", String.format("%.6f", longitude));
                                     postData.put("style", styleBox.getText().toString());
-                                    postData.put("photo1", "");
-                                    postData.put("photo2", "");
+                                    postData.put("photo1", photoBox1.getText().toString());
+                                    postData.put("photo2", photoBox2.getText().toString());
 
                                     SendShopDetails details = new SendShopDetails(mMap);
                                     details.execute(details.wwwEncodeMap(postData));
@@ -201,5 +217,36 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         }).create().show();
             }
         });
+    }
+
+    private void createPopUpMenu (Button button, Context context, int resMenu, final int state) {
+
+        // Creating the instance of PopupMenu
+        android.widget.PopupMenu popup = new android.widget.PopupMenu(context, button);
+
+        //Inflating the Popup using xml file
+        popup.getMenuInflater().inflate(resMenu, popup.getMenu());
+
+        //registering popup with OnMenuItemClickListener
+        popup.setOnMenuItemClickListener(new android.widget.PopupMenu.OnMenuItemClickListener() {
+            @Override
+            public boolean onMenuItemClick(MenuItem menuItem) {
+                mMap.clear();
+
+                if (state == 4) {
+                    radius = Integer.parseInt(menuItem.getTitle().toString());
+                }
+
+                new GetNearbyShops(mMap, latitude, longitude, radius, state, menuItem.getTitle().toString()).execute();
+
+                LatLng currPos = new LatLng(latitude, longitude);
+                currCircle = mMap.addCircle(new CircleOptions()
+                        .center(currPos)
+                        .radius(radius*1000)
+                        .fillColor(0x556b96db).strokeColor(Color.TRANSPARENT));
+                return true;
+            }
+        });
+        popup.show();
     }
 }
